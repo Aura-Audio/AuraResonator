@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AuraResonator - Prime FDN & Physical Modeling</title>
+    <style>
+        :root {
+            --bg: #07070a; --surface: #14141a; --primary: #b388ff;
+            --collapse: #ffb300; --collapse-glow: rgba(255, 179, 0, 0.6);
+            --danger: #ff1744; --record: #ff3d00; --text: #e0e0e0; 
+            --border: #2a2a35; --led-off: #222; --led-on: #b388ff;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; flex-direction: column; align-items: center; transition: background-color 0.5s ease;}
+        
+        /* Modal Collapse Theme Shift */
+        body.collapsed-mode { --primary: #ffb300; --led-on: #ffb300; background-color: #120a00; }
+        body.collapsed-mode .header h1 { color: var(--collapse); text-shadow: 0 0 15px var(--collapse-glow); }
+
+        .header { text-align: center; margin-bottom: 10px; width: 100%; max-width: 800px; }
+        .header h1 { color: var(--primary); transition: all 0.3s ease; margin: 0 0 5px 0; }
+        
+        .canvas-row { display: flex; flex-wrap: wrap; gap: 15px; width: 100%; max-width: 1400px; justify-content: center; margin-bottom: 15px; }
+        .canvas-container { flex: 1 1 300px; display: flex; flex-direction: column; width: 100%; max-width: 600px; }
+        .canvas-label { font-size: 0.85em; color: var(--primary); margin-bottom: 5px; font-weight: bold; text-align: center; text-transform: uppercase; letter-spacing: 1px; }
+        canvas { width: 100%; height: 120px; background: #000; border-radius: 8px; border: 1px solid var(--border); box-shadow: inset 0 0 15px rgba(0,0,0,0.9); }
+        
+        .controls { background: var(--surface); padding: 15px 20px; border-radius: 8px; border: 1px solid var(--border); margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 15px; align-items: center; justify-content: center; max-width: 1400px; width: 100%; box-sizing: border-box; }
+        .control-group { display: flex; align-items: center; gap: 10px; }
+        .divider { border-left: 1px solid #444; padding-left: 15px; }
+        
+        button { background-color: var(--primary); color: #000; border: none; padding: 8px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:hover { opacity: 0.8; }
+        button.active { background-color: var(--danger); color: white;}
+        button.record-active { background-color: var(--record); color: white; animation: pulse 1.5s infinite; }
+        
+        /* THE ULTIMATE MECHANIC BUTTON */
+        .collapse-btn { padding: 12px 24px; font-size: 1.2em; letter-spacing: 2px; border: 2px solid var(--collapse); background: transparent; color: var(--collapse); font-weight: 900; text-transform: uppercase; transition: all 0.1s; }
+        .collapse-btn:hover { background: rgba(255, 179, 0, 0.1); }
+        .collapse-btn.active-collapse { background: var(--collapse); color: #000; box-shadow: 0 0 30px var(--collapse-glow); transform: scale(1.02); animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+
+        .ui-num { padding: 4px; background: #000; color: white; border: 1px solid #555; border-radius: 4px; font-family: monospace;}
+        select.ui-num { cursor: pointer; }
+
+        /* DASHBOARD GRID */
+        .dash-header-row { width: 100%; max-width: 1600px; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 0 10px; box-sizing: border-box; gap: 10px; }
+        .dash-header-controls { display: flex; flex-wrap: wrap; gap: 15px; align-items: center; background: var(--surface); padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border); }
+        #instances-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; width: 100%; max-width: 1600px; margin-bottom: 10px; }
+        .instance-card { background: var(--surface); border: 2px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; transition: border-color 0.3s; }
+        .instance-card.active-card { border-color: var(--primary); }
+        .instance-header { display: flex; justify-content: space-between; align-items: center; font-size: 1.1em; font-weight: bold; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+        .led-indicator { width: 12px; height: 12px; border-radius: 50%; background-color: var(--led-off); box-shadow: 0 0 5px #000; transition: background-color 0.1s; }
+        .led-indicator.on { background-color: var(--led-on); box-shadow: 0 0 10px var(--led-on); }
+        .instance-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.9em; }
+
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        @keyframes shake { 10%, 90% { transform: translate3d(-1px, 0, 0); } 20%, 80% { transform: translate3d(2px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-4px, 0, 0); } 40%, 60% { transform: translate3d(4px, 0, 0); } }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>AuraResonator</h1>
+        <p style="margin:0; color:#888;">Prime-Number FDN & Karplus-Strong Physical Modeling</p>
+    </div>
+
+    <!-- VISUALIZERS -->
+    <div class="canvas-row">
+        <div class="canvas-container">
+            <div class="canvas-label" id="scope-label">Physical Time-Domain Displacement</div>
+            <canvas id="master-canvas"></canvas>
+        </div>
+        <div class="canvas-container">
+            <div class="canvas-label" id="fft-label">FFT Harmonic Structure</div>
+            <canvas id="fft-canvas"></canvas>
+        </div>
+    </div>
+
+    <!-- CORE CONTROLS & MODAL COLLAPSE -->
+    <div class="controls" style="border-color: var(--primary);">
+        <button id="mic-btn">Start Microphone</button>
+        <div class="control-group divider">
+            <label>Input Vol (%):</label>
+            <input type="number" id="mic-vol" class="ui-num" min="0" max="500" value="100" style="width: 50px;">
+        </div>
+        
+        <!-- THE ULTIMATE MECHANIC -->
+        <div class="divider" style="padding-left: 20px; display:flex; align-items:center; gap: 15px;">
+            <button id="collapse-btn" class="collapse-btn" disabled>⚡ Modal Collapse</button>
+            <div style="display:flex; flex-direction:column; gap:4px;">
+                <label style="font-size:0.8em; font-weight:bold; color:var(--collapse); text-transform:uppercase;">Tuning Target (Hz)</label>
+                <input type="range" id="collapse-hz-slider" min="30" max="880" value="110" step="1" style="width:150px;">
+                <div style="font-family:monospace; color:#aaa;" id="collapse-readout">110 Hz (A2)</div>
+            </div>
+        </div>
+
+        <div class="control-group divider" style="margin-left:auto; display:flex; flex-direction:column; align-items:flex-end;">
+            <span style="color:#888; font-size:0.8em;">ACTIVE TAPS</span>
+            <span id="tap-meter" style="color:var(--primary); font-family:monospace; font-weight:bold; font-size:1.2em;">0</span>
+        </div>
+    </div>
+
+    <!-- ENGINES DASHBOARD HEADER -->
+    <div class="dash-header-row">
+        <h2 style="margin: 0; color: var(--primary); font-size: 1.2em;">Material Tapped-Delay Array</h2>
+        
+        <div class="dash-header-controls">
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <label style="color: var(--primary); font-weight: bold;">Engines:</label>
+                <input type="number" id="master-engines-count" class="ui-num" min="1" max="20" value="12" style="width: 45px;">
+                
+                <label style="color: var(--primary); font-weight: bold; margin-left: 10px;">Taps/Engine:</label>
+                <input type="number" id="master-tracks-count" class="ui-num" min="10" max="1000" value="50" style="width: 55px;" title="Max 1000. Higher = Denser Reverb / Higher CPU">
+                
+                <button id="apply-master-btn" style="background-color: var(--primary); padding: 4px 10px; font-size: 0.85em; color: black; margin-left:10px;">Apply Batch</button>
+            </div>
+            <div class="divider"></div>
+            <button id="randomize-btn" style="background-color: #555; font-size: 0.9em; padding: 4px 12px; color:white;">🎲 Randomize Materials</button>
+        </div>
+    </div>
+
+    <!-- ROW 3: ENGINES DASHBOARD (20 ENGINES) -->
+    <div id="instances-container"></div>
+
+    <!-- RECORDING -->
+    <div class="controls" style="border-color: var(--record); margin-top:15px;">
+        <button id="record-btn" style="background-color: var(--surface); border: 2px solid var(--record); color: white;">⏺ Start Recording</button>
+        <div class="control-group divider"><label>Format: </label><select id="record-format" class="ui-num"><option value="wav">WAV (Uncompressed)</option><option value="flac">FLAC</option></select></div>
+        <div id="record-status" style="margin-left: 15px; color: #888; font-size: 0.9em;">Ready.</div>
+    </div>
+
+    <script>
+        const ENGINE_COUNT = 20; 
+        
+        // Define Physical Materials (Damping = Lowpass coefficient, Feedback = Decay tail)
+        const MATERIALS = {
+            'Glass': { damp: 0.95, fb: 0.99, desc: 'Bright, piercing reflection' },
+            'Metal': { damp: 0.60, fb: 0.98, desc: 'Ringing, resonant plate' },
+            'Void':  { damp: 0.20, fb: 0.999, desc: 'Infinite dark abyss' },
+            'Wood':  { damp: 0.15, fb: 0.80, desc: 'Warm, short acoustic body' },
+            'Cavern':{ damp: 0.35, fb: 0.96, desc: 'Deep, rumbling echoes' }
+        };
+
+        // ==========================================
+        // 1. THE KARPLUS-STRONG FDN WORKLET
+        // ==========================================
+        const workletCode = `
+        class ResonatorProcessor extends AudioWorkletProcessor {
+            constructor() {
+                super();
+                this.maxBuf = sampleRate * 2; // 2 seconds max buffer per engine
+                
+                // Pre-generate 10,000 prime numbers for phase-safe scatter
+                this.primes = this.generatePrimes(10000);
+
+                this.engines = Array(${ENGINE_COUNT}).fill().map(() => ({
+                    active: false,
+                    buf: new Float32Array(this.maxBuf),
+                    ptr: 0,
+                    numTaps: 50,
+                    baseSpread: 10, // Multiplier for prime indices
+                    damp: 0.5,
+                    fb: 0.9,
+                    lastOut: 0,
+                    
+                    // Arrays to hold the physical read-pointer delays
+                    curTaps: new Float32Array(1000),
+                    tarTaps: new Float32Array(1000)
+                }));
+
+                this.config = { collapsed: false, collapseFreq: 110 };
+
+                this.port.onmessage = (e) => {
+                    if (e.data.type === 'updateEngine') {
+                        let idx = e.data.index;
+                        let eng = this.engines[idx];
+                        Object.assign(eng, e.data.engineData);
+                        this.recalcTargetTaps(eng, idx);
+                    }
+                    if (e.data.type === 'collapse') {
+                        this.config.collapsed = e.data.collapsed;
+                        for(let i=0; i<${ENGINE_COUNT}; i++) this.recalcTargetTaps(this.engines[i], i);
+                    }
+                    if (e.data.type === 'updateFreq') {
+                        this.config.collapseFreq = e.data.freq;
+                        if (this.config.collapsed) {
+                            for(let i=0; i<${ENGINE_COUNT}; i++) this.recalcTargetTaps(this.engines[i], i);
+                        }
+                    }
+                };
+            }
+
+            generatePrimes(count) {
+                let p = []; let n = 2;
+                while(p.length < count) {
+                    let isP = true;
+                    for(let i=0; i<p.length; i++) {
+                        if (p[i] * p[i] > n) break;
+                        if (n % p[i] === 0) { isP = false; break; }
+                    }
+                    if(isP) p.push(n);
+                    n++;
+                }
+                return p;
+            }
+
+            recalcTargetTaps(eng, engIdx) {
+                // Period in samples for exact pitch tuning
+                let period = sampleRate / this.config.collapseFreq; 
+                
+                for(let i=0; i<eng.numTaps; i++) {
+                    if (this.config.collapsed) {
+                        // MODAL COLLAPSE: Force taps to exact integer multiples (Harmonic series)
+                        // This turns a chaotic reverb into a perfectly tuned physical string
+                        eng.tarTaps[i] = period * (i + 1);
+                    } else {
+                        // CHAOTIC FDN: Map to non-overlapping prime numbers
+                        // Stagger start index so engines don't overlap
+                        let pIdx = (engIdx * 100) + i; 
+                        eng.tarTaps[i] = this.primes[pIdx % this.primes.length] * eng.baseSpread;
+                    }
+                    // Safe boundaries
+                    if(eng.tarTaps[i] >= this.maxBuf - 2) eng.tarTaps[i] = this.maxBuf - 2;
+                }
+            }
+
+            process(inputs, outputs) {
+                const input = inputs[0];
+                const output = outputs[0];
+                if (!input || !input.length) return true;
+                const channelIn = input[0];
+                const channelOut = output[0];
+                const numFrames = channelIn.length;
+
+                let activeEngines = 0;
+                for(let e=0; e<${ENGINE_COUNT}; e++) if(this.engines[e].active) activeEngines++;
+                let globalNorm = activeEngines > 0 ? 1.0 / Math.sqrt(activeEngines) : 1.0;
+
+                for (let i = 0; i < numFrames; i++) {
+                    let val = channelIn[i];
+                    let outMix = 0;
+
+                    for (let e = 0; e < ${ENGINE_COUNT}; e++) {
+                        let eng = this.engines[e];
+                        if (!eng.active) continue;
+
+                        let tapSum = 0;
+                        
+                        // ZERO-BRANCH DSP LOOP for Taps
+                        for(let t = 0; t < eng.numTaps; t++) {
+                            // "Slurp" smoothing: physically glides the delays into pitch
+                            eng.curTaps[t] += (eng.tarTaps[t] - eng.curTaps[t]) * 0.001;
+
+                            let readPos = eng.ptr - eng.curTaps[t];
+                            if (readPos < 0) readPos += this.maxBuf;
+
+                            // Fractional Delay Read (crucial for accurate Karplus-Strong pitch tuning)
+                            let idx1 = Math.floor(readPos);
+                            let idx2 = idx1 + 1;
+                            if (idx2 >= this.maxBuf) idx2 = 0; 
+                            let frac = readPos - idx1;
+
+                            tapSum += eng.buf[idx1] + frac * (eng.buf[idx2] - eng.buf[idx1]);
+                        }
+
+                        // Normalization to prevent gain staging explosions
+                        let normTap = tapSum / Math.sqrt(eng.numTaps);
+                        
+                        // 1-Pole Lowpass Filter (Defines the "Material" damping)
+                        let filtered = eng.lastOut + eng.damp * (normTap - eng.lastOut);
+                        eng.lastOut = filtered;
+
+                        // TAPE SATURATION: Soft-clipper on feedback loop
+                        // This prevents volume explosion during Modal Collapse constructive interference
+                        let feedbackVal = Math.tanh(filtered * eng.fb);
+
+                        // Write to History Buffer
+                        eng.buf[eng.ptr] = val + feedbackVal;
+
+                        // Advance Writer
+                        eng.ptr++;
+                        if (eng.ptr >= this.maxBuf) eng.ptr = 0;
+
+                        outMix += filtered;
+                    }
+
+                    // Wet/Dry mix
+                    channelOut[i] = (val * 0.4) + (outMix * globalNorm * 0.6);
+                }
+
+                return true;
+            }
+        }
+        registerProcessor('resonator-worklet', ResonatorProcessor);
+        `;
+        const workletBlob = new Blob([workletCode], { type: 'application/javascript' });
+        const workletUrl = URL.createObjectURL(workletBlob);
+
+        // --- GLOBAL VARIABLES ---
+        let audioContext, microphone, stream;
+        let isRunning = false, animationId;
+        let isCollapsed = false;
+        
+        let liveMathNode, outputGain; 
+        let rawAnalyser, postAnalyser, fftAnalyser;
+        let rawTimeData, postTimeData, fftData;
+
+        let isRecording = false, mediaRecorder = null, recordedChunks =[], scriptProcessor = null, wavAudioBuffer =[]; 
+
+        const micBtn = document.getElementById('mic-btn');
+        const collapseBtn = document.getElementById('collapse-btn');
+        const hzSlider = document.getElementById('collapse-hz-slider');
+        
+        const masterCanvas = document.getElementById('master-canvas');
+        const masterCtx = masterCanvas.getContext('2d', { alpha: false });
+        const fftCanvas = document.getElementById('fft-canvas');
+        const fftCtx = fftCanvas.getContext('2d', { alpha: false });
+
+        // --- HZ READOUT FORMATTER ---
+        function getNoteStr(hz) {
+            const notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+            let halfSteps = Math.round(12 * Math.log2(hz / 440));
+            let octave = 4 + Math.floor((halfSteps + 9) / 12);
+            let noteIdx = (halfSteps + 69) % 12;
+            if(noteIdx < 0) noteIdx += 12;
+            return `${notes[noteIdx]}${octave}`;
+        }
+        hzSlider.addEventListener('input', (e) => {
+            let hz = parseFloat(e.target.value);
+            document.getElementById('collapse-readout').innerText = `${hz} Hz (${getNoteStr(hz)})`;
+            if(liveMathNode) liveMathNode.port.postMessage({ type: 'updateFreq', freq: hz });
+        });
+
+        // --- MODAL COLLAPSE MECHANIC ---
+        collapseBtn.addEventListener('click', () => {
+            if(!liveMathNode) return;
+            isCollapsed = !isCollapsed;
+            
+            // UI Shifts
+            document.body.classList.toggle('collapsed-mode', isCollapsed);
+            collapseBtn.classList.toggle('active-collapse', isCollapsed);
+            document.getElementById('scope-label').innerText = isCollapsed ? "Karplus-Strong String Displacement" : "Physical Time-Domain Displacement";
+            
+            // Push command to Worklet
+            liveMathNode.port.postMessage({ 
+                type: 'collapse', 
+                collapsed: isCollapsed,
+                freq: parseFloat(hzSlider.value)
+            });
+        });
+
+        // --- DASHBOARD UI GENERATOR ---
+        const instancesContainer = document.getElementById('instances-container');
+        let matKeys = Object.keys(MATERIALS);
+
+        for(let i=0; i<ENGINE_COUNT; i++) {
+            let optionsHTML = matKeys.map(k => `<option value="${k}">${k}</option>`).join('');
+            
+            instancesContainer.innerHTML += `
+            <div class="instance-card active-card" id="card-${i}">
+                <div class="instance-header"><span>Engine ${i + 1}</span>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <input type="checkbox" id="eng-active-${i}" checked> Enable
+                        <div id="led-${i}" class="led-indicator"></div>
+                    </div>
+                </div>
+                <div class="instance-row">
+                    <label style="color:var(--primary); font-weight:bold;">Material:</label>
+                    <select id="eng-mat-${i}" class="ui-num">${optionsHTML}</select>
+                </div>
+                <div class="instance-row">
+                    <label>Taps (Density):</label>
+                    <input type="number" id="eng-taps-${i}" class="ui-num" min="1" max="1000" value="50" style="width: 50px;">
+                </div>
+                <div class="instance-row">
+                    <label title="Multiplier for Prime numbers">Delay Spread:</label>
+                    <input type="number" id="eng-spread-${i}" class="ui-num" min="0.1" max="200" step="0.1" value="${Math.floor(Math.random() * 20 + 2)}" style="width: 50px;">
+                </div>
+                <div id="eng-desc-${i}" style="font-size:0.75em; color:#888; text-align:right; font-style:italic;">Bright, piercing reflection</div>
+            </div>`;
+        }
+
+        // --- BATCH SETTINGS & MASTER CONTROLS ---
+        function sendEngineConfig(idx) {
+            if(!liveMathNode) return;
+            const matName = document.getElementById(`eng-mat-${idx}`).value;
+            const mat = MATERIALS[matName];
+            document.getElementById(`eng-desc-${idx}`).innerText = mat.desc;
+
+            const config = {
+                active: document.getElementById(`eng-active-${idx}`).checked,
+                numTaps: parseInt(document.getElementById(`eng-taps-${idx}`).value) || 50,
+                baseSpread: parseFloat(document.getElementById(`eng-spread-${idx}`).value) || 10,
+                damp: mat.damp,
+                fb: mat.fb
+            };
+            
+            liveMathNode.port.postMessage({ type: 'updateEngine', index: idx, engineData: config });
+
+            const card = document.getElementById(`card-${idx}`);
+            const led = document.getElementById(`led-${idx}`);
+            if(config.active) { card.classList.add('active-card'); if(isRunning) led.classList.add('on'); } 
+            else { card.classList.remove('active-card'); led.classList.remove('on'); }
+
+            updateTapMeter();
+        }
+
+        function updateTapMeter() {
+            let sum = 0;
+            for(let i=0; i<ENGINE_COUNT; i++) {
+                if(document.getElementById(`eng-active-${i}`).checked && document.getElementById(`card-${i}`).style.display !== 'none') {
+                    sum += parseInt(document.getElementById(`eng-taps-${i}`).value) || 0;
+                }
+            }
+            document.getElementById('tap-meter').innerText = sum;
+        }
+
+        document.getElementById('apply-master-btn').addEventListener('click', () => {
+            const engCount = parseInt(document.getElementById('master-engines-count').value);
+            const trkCount = parseInt(document.getElementById('master-tracks-count').value);
+
+            for (let i = 0; i < ENGINE_COUNT; i++) {
+                const card = document.getElementById(`card-${i}`);
+                if (i < engCount) { card.style.display = 'flex'; document.getElementById(`eng-active-${i}`).checked = true; } 
+                else { card.style.display = 'none'; document.getElementById(`eng-active-${i}`).checked = false; }
+                
+                document.getElementById(`eng-taps-${i}`).value = trkCount;
+                sendEngineConfig(i); 
+            }
+        });
+
+        document.getElementById('randomize-btn').addEventListener('click', () => {
+            for(let i=0; i<ENGINE_COUNT; i++) {
+                let rMat = matKeys[Math.floor(Math.random() * matKeys.length)];
+                document.getElementById(`eng-mat-${i}`).value = rMat;
+                document.getElementById(`eng-spread-${i}`).value = (Math.random() * 30 + 1).toFixed(1);
+                sendEngineConfig(i);
+            }
+        });
+
+        // Bind individual inputs
+        for(let i=0; i<ENGINE_COUNT; i++) {
+            ['eng-active-', 'eng-mat-', 'eng-taps-', 'eng-spread-'].forEach(prefix => {
+                document.getElementById(prefix + i).addEventListener('input', () => sendEngineConfig(i));
+            });
+        }
+
+        // --- AUDIO ENGINE BOOT SEQUENCE ---
+        async function toggleMic() {
+            if (isRunning) {
+                if (isRecording) stopRecording();
+                cancelAnimationFrame(animationId);
+                if (stream) stream.getTracks().forEach(track => track.stop());
+                if (audioContext) audioContext.close();
+                
+                micBtn.innerText = 'Start Microphone'; micBtn.classList.remove('active');
+                collapseBtn.disabled = true; isRunning = false;
+                for(let i=0; i<ENGINE_COUNT; i++) document.getElementById(`led-${i}`).classList.remove('on'); 
+                return;
+            }
+
+            try {
+                // Disable echo cancellation to allow pure vocal input
+                stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                await audioContext.audioWorklet.addModule(workletUrl);
+                
+                microphone = audioContext.createMediaStreamSource(stream);
+                
+                let preGainNode = audioContext.createGain();
+                document.getElementById('mic-vol').addEventListener('input', (e) => preGainNode.gain.value = e.target.value / 100);
+
+                postAnalyser = audioContext.createAnalyser(); postAnalyser.fftSize = 2048;
+                fftAnalyser = audioContext.createAnalyser(); fftAnalyser.fftSize = 4096;
+                
+                postTimeData = new Float32Array(postAnalyser.frequencyBinCount);
+                fftData = new Uint8Array(fftAnalyser.frequencyBinCount);
+
+                liveMathNode = new AudioWorkletNode(audioContext, 'resonator-worklet');
+
+                outputGain = audioContext.createGain(); outputGain.gain.value = 1.0;
+
+                // Routing Graph
+                microphone.connect(preGainNode);
+                preGainNode.connect(liveMathNode);
+                liveMathNode.connect(postAnalyser);
+                liveMathNode.connect(fftAnalyser);
+                liveMathNode.connect(outputGain);
+                outputGain.connect(audioContext.destination);
+
+                // Initialize Engine Data
+                for(let i=0; i<ENGINE_COUNT; i++) sendEngineConfig(i); 
+                document.getElementById('apply-master-btn').click();
+
+                micBtn.innerText = 'Stop Microphone'; micBtn.classList.add('active'); 
+                collapseBtn.disabled = false; isRunning = true;
+                
+                for(let i=0; i<ENGINE_COUNT; i++) if(document.getElementById(`eng-active-${i}`).checked) document.getElementById(`led-${i}`).classList.add('on'); 
+
+                masterCanvas.width = masterCanvas.clientWidth; masterCanvas.height = masterCanvas.clientHeight;
+                fftCanvas.width = fftCanvas.clientWidth; fftCanvas.height = fftCanvas.clientHeight;
+                
+                processVisualizer();
+            } catch (err) { alert('Error accessing microphone: ' + err); }
+        }
+
+        // --- RECORDING SYSTEM ---
+        document.getElementById('record-btn').addEventListener('click', () => {
+            if (!isRunning) return alert("Start Microphone first!");
+            if (isRecording) stopRecording(); else startRecording();
+        });
+
+        function startRecording() {
+            isRecording = true; 
+            document.getElementById('record-btn').innerText = '⏹ Stop Recording'; document.getElementById('record-btn').classList.add('record-active');
+            document.getElementById('record-status').innerText = `Recording Output...`;
+            const dest = audioContext.createMediaStreamDestination(); outputGain.connect(dest);
+
+            if (document.getElementById('record-format').value === 'wav') {
+                wavAudioBuffer =[]; scriptProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+                dest.connect(scriptProcessor); scriptProcessor.connect(audioContext.destination); 
+                scriptProcessor.onaudioprocess = (e) => { if (!isRecording) return; wavAudioBuffer.push(new Float32Array(e.inputBuffer.getChannelData(0))); };
+            } else {
+                recordedChunks =[]; mediaRecorder = new MediaRecorder(dest.stream);
+                mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+                mediaRecorder.onstop = () => { triggerDownload(new Blob(recordedChunks), 'AuraResonator_Output.webm'); };
+                mediaRecorder.start(100); 
+            }
+        }
+
+        function stopRecording() {
+            isRecording = false; 
+            document.getElementById('record-btn').innerText = '⏺ Start Recording'; document.getElementById('record-btn').classList.remove('record-active'); 
+            document.getElementById('record-status').innerText = 'Compiling...';
+            if (document.getElementById('record-format').value === 'wav' && scriptProcessor) { scriptProcessor.disconnect(); setTimeout(compileWAVFile, 50); }
+            else if (mediaRecorder) { mediaRecorder.stop(); }
+        }
+
+        function compileWAVFile() {
+            const length = wavAudioBuffer.reduce((a, b) => a + b.length, 0); const flat = new Float32Array(length);
+            let off = 0; for (let b of wavAudioBuffer) { flat.set(b, off); off += b.length; }
+            const buf = new ArrayBuffer(44 + flat.length * 2); const view = new DataView(buf);
+            const wStr = (off, s) => { for (let i=0; i<s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+            wStr(0, 'RIFF'); view.setUint32(4, 36 + flat.length * 2, true); wStr(8, 'WAVE'); wStr(12, 'fmt ');
+            view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, audioContext.sampleRate, true);
+            view.setUint32(28, audioContext.sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); wStr(36, 'data'); view.setUint32(40, flat.length * 2, true);
+            for (let i = 0, p = 44; i < flat.length; i++, p += 2) { let s = Math.max(-1, Math.min(1, flat[i])); view.setInt16(p, s < 0 ? s * 0x8000 : s * 0x7FFF, true); }
+            triggerDownload(new Blob([view], { type: 'audio/wav' }), 'AuraResonator_Output.wav');
+        }
+
+        function triggerDownload(blob, filename) {
+            const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.style.display = 'none'; a.href = url; a.download = filename;
+            document.body.appendChild(a); a.click(); setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); document.getElementById('record-status').innerText = "Saved!"; }, 100);
+        }
+
+        // --- HOLOGRAPHIC VISUALIZER ---
+        function processVisualizer() {
+            if (!isRunning) return; animationId = requestAnimationFrame(processVisualizer);
+            
+            // 1. Time Domain Waveform
+            postAnalyser.getFloatTimeDomainData(postTimeData);
+            masterCtx.fillStyle = '#000000'; masterCtx.fillRect(0, 0, masterCanvas.width, masterCanvas.height);
+            const sliceWidth = masterCanvas.width / postTimeData.length; const heightHalf = masterCanvas.height / 2;
+
+            masterCtx.globalAlpha = 1.0; 
+            masterCtx.lineWidth = isCollapsed ? 3 : 1.5; 
+            masterCtx.strokeStyle = isCollapsed ? '#ffb300' : '#b388ff';
+            if(isCollapsed) { masterCtx.shadowBlur = 10; masterCtx.shadowColor = '#ffb300'; } 
+            else { masterCtx.shadowBlur = 0; }
+
+            masterCtx.beginPath();
+            for (let i = 0, x = 0; i < postTimeData.length; i++, x+=sliceWidth) {
+                const y = (postTimeData[i] * heightHalf) + heightHalf;
+                i === 0 ? masterCtx.moveTo(x, y) : masterCtx.lineTo(x, y); 
+            }
+            masterCtx.stroke(); 
+            masterCtx.shadowBlur = 0;
+
+            // 2. FFT Spectral Distribution
+            fftAnalyser.getByteFrequencyData(fftData);
+            fftCtx.fillStyle = '#000000'; fftCtx.fillRect(0, 0, fftCanvas.width, fftCanvas.height);
+            
+            // Draw logarithmic FFT to see harmonic spikes clearly
+            const logMax = Math.log10(fftAnalyser.frequencyBinCount);
+            
+            fftCtx.beginPath(); fftCtx.moveTo(0, fftCanvas.height);
+            for(let i = 1; i < fftAnalyser.frequencyBinCount; i++) {
+                // Logarithmic x-axis scaling
+                const x = (Math.log10(i) / logMax) * fftCanvas.width;
+                const y = fftCanvas.height - ((fftData[i] / 255.0) * fftCanvas.height);
+                fftCtx.lineTo(x, y);
+            }
+            fftCtx.lineTo(fftCanvas.width, fftCanvas.height); 
+            
+            fftCtx.fillStyle = isCollapsed ? 'rgba(255, 179, 0, 0.4)' : 'rgba(179, 136, 255, 0.3)'; 
+            fftCtx.fill();
+            fftCtx.strokeStyle = isCollapsed ? '#ffb300' : '#b388ff'; 
+            fftCtx.lineWidth = isCollapsed ? 2 : 1; 
+            fftCtx.stroke();
+        }
+
+        document.getElementById('mic-btn').addEventListener('click', toggleMic);
+        
+        // Boot defaults
+        document.getElementById('apply-master-btn').click();
+        document.getElementById('randomize-btn').click();
+    </script>
+</body>
+</html>
